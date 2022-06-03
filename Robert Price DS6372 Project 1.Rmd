@@ -1,0 +1,401 @@
+---
+title: "Project 1 - EDA"
+author: "Robert Price"
+date: "5/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 01 - Introduction
+
+For this analysis, we will use the life expectancy dataset collected by the 
+World Health Organization (WHO) across multiple years and many countries.
+Countries are divided into categories such as "developing" and "developed", and
+include metrics collected across a wide array of indicators ranging from adult
+mortality to GDP.
+
+The analysis will be completed using the statistical programming language, R.
+Third-party packages used in the analysis are listed below. 
+
+#### Load Packages
+
+```{r load_libraries, comment=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(ggthemes)
+library(scales)
+library(broom)
+library(naniar)
+library(Metrics)
+library(corrplot)
+```
+
+## 02 - Summary of Data Set
+
+#### Column Descriptions
+
+- **Country:** country name
+- **Year:** year
+- **Status:** country status of either "developed or "developing"
+- **Life Expectancy:** average life expectancy in years
+- **Adult Mortality:** the number of individuals dying between 15 and 60 years 
+  old per 1000 population
+- **Infant Deaths:** the number of infant deaths per 1000 population
+- **Alcohol:** per capita alcohol consumption (in liters of pure alcohol)
+- **Percentage Expenditure:** expenditure on health as a percentage of GDP per 
+  capita (%)
+- **Hepatitis B:** Hepatitis B immunization coverage among 1 year-olds (%)
+- **Measles:** number of reported measles cases per 1000 population
+- **BMI:** average body mass index entire population
+- **Under-Five Deaths:** number of deaths under five years-old per 1000 
+  population
+- **Polio:** Polio immunization coverage among 1 year-olds (%)
+- **Total expenditure:** general government expenditure on health as a 
+  percentage of total government expenditure (%)
+- **Diphtheria:** Diphtheria tetanus toxoid and pertussis immunization coverage 
+  among 1 year-olds (%)
+- **HIV/AIDS:** deaths per 1000 live births of HIV/AIDS (0-4 years)
+- **GDP:** gross domestic product per capita (in USD)
+- **Population:** population of the country
+- **Thinness 1-19 Years:** prevalence of thinness among children and adolescents
+  ages 1-19 years old (%)
+- **Thinness 5-9 Years:** prevalence of thinness among children for ages 5-9
+  years old (%)
+- **Income Composition of Resources:** human development index in terms of 
+  income composition of resources (index ranging from 0 to 1)
+- **Schooling:** number of years of schooling
+
+#### Load Dataset
+
+```{r load_dataset}
+# input file name to read
+filename <- 'Life Expectancy Data.csv'
+
+# read data from CSV
+raw_df <- read.csv(filename)
+```
+
+#### Rename Columns
+
+```{r rename_columns}
+# rename columns using  to clean up
+renamed_df <- raw_df %>% 
+  rename_with(~ tolower(gsub("[.]+", "_", .x)))
+
+# print header to verify data
+head(renamed_df)
+```
+
+#### Summary Statistics
+
+From the descriptive statistics below, we can already see some variables that 
+could be a concern when modeling. 
+
+```{r}
+# simple calculation of descriptive statistics
+summary(renamed_df)
+```
+
+## 03 - Data Cleaning
+
+#### Visualize Missing Data
+
+```{r missing_data}
+# visualize missing observations by column
+vis_miss(
+  renamed_df %>% select_if(~ any(is.na(.))),
+  sort_miss = T
+)
+
+# visualize combinations and intersections of missing values
+gg_miss_upset(renamed_df)
+```
+
+**Columns with Missing Values**
+- **Population:** drop column due to high number of missing values (22.2%) and 
+  bias in which countries are missing records
+  
+- **Life Expectancy:** life expectancy is the response variable, and there is 
+  small number of missing values (0.34%), so I will drop these missing records
+  from analysis
+
+
+## Visualizations
+
+#### Visualize Population Over Time
+
+```{r}
+# plot total population over time
+renamed_df %>% 
+  mutate(population = ifelse(is.na(population), 0, population)) %>%
+  ggplot(aes(x=year, y=population)) + 
+  geom_col(fill='#2c3e50') + 
+	scale_y_continuous(labels = label_number(suffix = ' B', scale = 1e-9)) + 
+  labs(
+    title='Total World Population by Year',
+    x='', y='Population in Billions')
+
+# list countries missing population values
+renamed_df %>%   
+  mutate(population = ifelse(is.na(population), 0, population)) %>%
+  group_by(country) %>%
+  summarize(count_na=sum(!population > 0)) %>%
+  filter(count_na > 0)
+```
+
+#### Initial Data Cleaning
+
+```{r}
+# drop rows where life expectancy is not defined
+drop_le_records_df <- renamed_df %>% drop_na(life_expectancy)
+
+# drop population from dataset
+drop_population_df <- 
+  drop_le_records_df[, !(names(drop_le_records_df) %in% c('population'))]
+```
+
+#### Factorize Categorical Variables
+
+```{r}
+# define function for factorizing a list of columns
+factorize_columns = function (df, cols) {
+  for (col in columns_to_factor) {
+    df[, col] <- as.factor(df[, col])
+  } 
+  return (df)
+}
+
+# list of columns to factorize
+columns_to_factor <- c('country', 'status')
+
+# convert columns to factors
+factorized_df <- factorize_columns(drop_population_df, columns_to_factor)
+```
+
+#### Hepatitis B
+
+```{r}
+# plot the distribution of Hepatitis B on a histogram
+factorized_df %>% ggplot(aes(y=hepatitis_b)) +
+  geom_histogram(fill='#2c3e50') + 
+  labs(
+    title='Distribution of Hepatitis B Vaccinations',
+    x='Count', y='Vaccination [%]')
+
+# plot box plots of Hepatitis B by Development Status
+factorized_df %>% ggplot(aes(x=status, y=hepatitis_b)) +
+  geom_boxplot()
+
+head(factorized_df)
+
+# missing_hep = drop_population_df[is.na(hepatitis_b) == T,]
+# country_count = data.frame(table(missing_hep$country))
+# country_count[order(-country_count$Freq),]
+# popcountrycount[order(-popcountrycount$Freq),]
+# table(countrycount$Freq)
+# missingHepCountries = data.frame("Country" = countrycount$Var1)
+# cleanedData[Country=="Burkina Faso",]
+```
+
+### Boxplots
+
+```{r}
+# initialize empty list to store plots
+columns_to_factor <- list()
+
+# define negate operator %!in%
+`%!in%` <- Negate(`%in%`)
+
+# define columns to skip plotting
+columns_to_skip <- c('country', 'status')
+
+# loop over dataframe and plot box plots 
+for(i in names(drop_population_df)) {
+  if (i %!in% columns_to_skip) {
+      plt <- drop_population_df %>% ggplot(aes_string(x=i)) +
+        geom_boxplot(aes(fill=status)) + 
+        labs(
+          title=paste0('Histogram of "', i, '"'),
+          )
+      print(plt)
+  }
+}
+```
+
+#### Drop Remaining Null Rows
+
+```{r}
+# drop rows where life expectancy is not defined)
+clean_df <- drop_population_df %>% drop_na()
+```
+
+#### Correlation
+
+```{r}
+# define columns to skip correlation
+columns_to_skip <- cbind(columns_to_factor, 'id')
+
+# create dataframe to prepare for correlation analysis
+corr_df <- clean_df[, !(names(clean_df) %in% columns_to_skip)]
+
+cor(corr_df)
+
+corrplot(
+  cor(corr_df), 
+  # method = 'number
+  method = 'circle',
+  order = 'alphabet',
+  title = 'Correlation of Continuous Variables',
+  number.cex = 0.5,
+  tl.cex = 0.5) 
+
+# cor_matrix <- broom::tidy(cor(clean_df[, 1:21])) %>%
+#   rename(Var1 = ".rownames") %>%
+#   gather(Var2, Cor, -Var1)
+# cor_matrix
+```
+
+#### Factorize Categorical Variables
+
+```{r data_cleaning}
+# define function for factorizing a list of columns
+factorize_columns = function (df, cols) {
+  for (col in columns_to_factor) {
+    df[, col] <- as.factor(df[, col])
+  } 
+  return (df)
+}
+
+# list of columns to factorize
+columns_to_factor <- c('country', 'status')
+
+# convert columns to factors
+clean_df <- factorize_columns(renamed_df, columns_to_factor)
+
+# manually define columns to remove because of missing values
+columns_to_remove <- c('population', 'hepatitis_b')
+
+# remove columns
+clean_df <- clean_df[, !(names(clean_df) %in% columns_to_remove)]
+
+# add ID column to dataset
+clean_df <- rowid_to_column(clean_df, 'id')
+
+# print dataframe to check conversions
+head(clean_df)
+```
+
+
+
+
+## 06 - Feature Engineering & Model 
+
+
+#### Split Data into Traning and Testing Sets
+
+```{r}
+# split data into training and testing sets
+train_test <- train_test_split(clean_df, 0.85)
+
+# assign new dataframes
+train_df <- train_test$train
+test_df <- train_test$test
+
+# print number of observations in each set
+paste0('Number of rows in training set: ', nrow(train_df))
+paste0('Number of rows in testing set: ', nrow(test_df))
+```
+
+#### Fit and Predict Intercept Model
+
+```{r}
+# define a simple metric to measure model complexity
+get_complexity = function(model) {
+  length(coef(model)) - 1
+}
+
+# define response name for plots
+response_variable <- 'Life Expectancy'
+
+# fit the intercept-only model to the training dataset
+intercept_fit <- lm(life_expectancy ~ 1, data=train_df)
+all_vars_fit <- lm(life_expectancy ~ ., data=train_df)
+
+intercept_train_predictions <- predict(intercept_fit)
+intercept_test_predictions <- predict(intercept_fit, newdata = test_df)
+
+train_rmse <- rmse(train_df$life_expectancy, intercept_train_predictions)
+test_rmse <- rmse(test_df$life_expectancy, intercept_test_predictions)
+
+
+adj_r2 <- summary(intercept_fit)$adj.r.squared
+r2 <- summary(intercept_fit)$r.squared
+
+# validate model using testing set
+intercept_predictions <- predict(intercept_fit, newdata = test_df)
+all_vars_predictions <- predict(all_vars_fit, newdata = test_df)
+
+# all_vars_predictions
+
+# define list of models
+models <- list()
+
+# join prediction results with ID
+intercept_results <- data.frame(
+  id = test_df$id,
+  life_expectancy = test_df$life_expectancy,
+  intercept_prediction = intercept_predictions
+) %>%
+  mutate(residual = life_expectancy - intercept_prediction)
+
+rmse(test_df$life_expectancy, intercept_predictions)
+rmse(test_df$life_expectancy, all_vars_predictions)
+
+# create a scatter plot of residuals
+intercept_results %>% ggplot(aes(x=id, y=residual)) + 
+  geom_point(color='#c0392b', shape=1, alpha=0.8) +
+  geom_hline(yintercept=0) + 
+  labs(
+    title=paste0('Residuals Plot for ', response_variable),
+    subtitle='Intercept-Only Model',
+    x='Fitted Values',
+    y='Residual'
+  )
+
+# create a histogram of residuals
+intercept_results %>% ggplot(aes(x=residual)) + 
+  geom_histogram(aes(y=..density..), fill='#c0392b', color='white', bins=17) +
+  labs(
+    title=paste0('Histogram of Residuals for ', response_variable),
+    subtitle='Intercept-Only Model',
+    x='Residuals',
+    y=NULL
+  ) 
+
+# scatter plot of predictions and residuals
+intercept_results %>% ggplot(aes(x=intercept_prediction, y=life_expectancy)) +
+  geom_point(color='#0C6291', shape=1, alpha=0.8) + 
+  geom_abline(intercept=0, slope=1) +
+  labs(
+    title=paste0('Observed vs Predicted Values for ', response_variable),
+    subtitle='Intercept-Only Model',
+    x='Predicted',
+    y='Observed (Test Set)'
+  )
+
+# step-wise forward variable selection
+forward <- step(
+  intercept_fit, 
+  direction='forward', 
+  scope=formula(all_vars_fit), 
+  trace=0)
+
+forward$anova
+
+forward$coefficients
+```
