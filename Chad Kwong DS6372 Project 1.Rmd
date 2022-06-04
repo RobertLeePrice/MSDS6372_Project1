@@ -1,0 +1,639 @@
+---
+title: "6372 Stats 2 Project 1"
+author: "Chad Kwong"
+date: "5/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(olsrr)
+library(car)
+library(ggplot2)
+library(class)
+
+#Regression Tree Libraries
+library(rsample)     # data splitting 
+library(dplyr)       # data wrangling
+library(rpart)       # performing regression trees
+library(rpart.plot)  # plotting regression trees
+library(ipred)       # bagging
+library(caret)       # bagging
+
+#loading in data
+lifeExpectancyData <- read.csv("/Users/chadkwong/Desktop/Resources/Datasets/Life Expectancy Data.csv")
+cleanedData=lifeExpectancyData
+#cleanedData$Country = as.factor(Country)
+cleanedData$Status = as.factor(cleanedData$Status)
+attach(cleanedData)
+```
+
+# Objective 1
+## Missing Values
+```{r, include=FALSE}
+table(is.na(lifeExpectancyData))
+#Gathering all na values
+#create data frame with 0 rows and 4 columns
+naCol <- data.frame(matrix(ncol = 4, nrow = 0))
+#provide column names
+colnames(naCol) <- c('varName', 'varType', 'varID#', 'naCount')
+
+for(i in 1:ncol(cleanedData)){
+  if(length(table(is.na(cleanedData)))==2){
+    naCol[i,] = c("dummy","dummy",i,table(is.na(cleanedData[,i]))[2])
+  }
+}
+naCol = na.omit(naCol)
+naCol$`varID#` = as.integer(naCol$`varID#`)
+naCol$naCount = as.integer(naCol$naCount)
+for(i in 1:length(naCol$varName)){
+  naCol$varName[i] = colnames(cleanedData)[naCol$`varID#`[i]]
+  naCol$varType[i] = typeof(cleanedData[,naCol$`varID#`[i]])
+}
+naCol
+
+#vis_miss(lifeExpectancyData %>% select_if(~any(is.na(.))))
+#gg_miss_upset(lifeExpectancyData)
+```
+###Approaching NA Values
+```{r include=FALSE}
+#investigating missing life expectancy values
+#Each entry that is missing life expectancy values contain single entries in the dataframe. 
+#Therefore I have chosen to remove all rows that have na values for life expectancy
+missingLE =  lifeExpectancyData[is.na(lifeExpectancyData$Life.expectancy)==TRUE,]
+lifeExpectancyData[is.na(lifeExpectancyData$Life.expectancy)==TRUE,]
+#8/10 missing values are for small islands. 2 values are for Monaco and San Marino which are microstates
+cleanedData <- cleanedData %>% drop_na(Life.expectancy)
+AvgCleanedData = cleanedData
+
+#investigating population
+missingPop = cleanedData[is.na(Population)==TRUE,]
+popcountrycount = data.frame(table(missingPop$Country))
+popcountrycount[order(-popcountrycount$Freq),]
+table(popcountrycount$Freq)
+missingPopCountries = data.frame("Country" = popcountrycount$Var1)
+# Almost all missing populations span across 16 years. 
+# This occurs for about 40 countries, so I will not approach fixing these NA values.
+# Instead, I will not use this variable as a predictor in my model
+
+```
+
+```{r, include=FALSE}
+attach(cleanedData)
+```
+
+Hep B
+```{r, include=FALSE}
+#investigating hepatitis B
+missingHep = cleanedData[is.na(cleanedData$Hepatitis.B)==TRUE,]
+countrycount = data.frame(table(missingHep$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Hepatitis.B[is.na(cleanedData$Hepatitis.B)==TRUE & Country==countrycount$Var1[d]] = min(na.omit(cleanedData$Hepatitis.B[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Hepatitis.B[is.na(cleanedData$Hepatitis.B)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Hepatitis.B))
+  }
+}
+
+table(is.na(cleanedData$Hepatitis.B))
+```
+
+BMI
+```{r, include=FALSE}
+# Approaching BMI
+missingBMI = cleanedData[is.na(BMI)==TRUE,]
+countrycount = data.frame(table(missingBMI$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$BMI[is.na(cleanedData$BMI)==TRUE & Country==countrycount$Var1[d]] = min(na.omit(cleanedData$BMI[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$BMI[is.na(cleanedData$BMI)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$BMI))
+  }
+}
+
+table(is.na(cleanedData$BMI))
+```
+
+Diphtheria
+```{r, include=FALSE}
+# Approaching Diphtheria
+missingDip = cleanedData[is.na(Diphtheria)==TRUE,]
+countrycount = data.frame(table(missingDip$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Diphtheria[is.na(cleanedData$Diphtheria)==TRUE & Country==countrycount$Var1[d]] = min(na.omit(cleanedData$Diphtheria[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Diphtheria[is.na(cleanedData$Diphtheria)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Diphtheria))
+  }
+}
+
+table(is.na(cleanedData$Diphtheria))
+```
+
+Alcohol (setting all missing values to country avg if possible and overall avg where not available). Many missing values were for the most recent year available. After analyzing trends on a rudimentary level, I have chosen to set the missing values to the country average for what data is available.
+```{r, include=FALSE}
+#analyzing random stretch of data
+stretch = cleanedData[100:200,c(1,2,7)]
+# Approaching Alcohol
+missingAlc = cleanedData[is.na(Alcohol)==TRUE,]
+countrycount = data.frame(table(missingAlc$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Alcohol[is.na(cleanedData$Alcohol)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Alcohol[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Alcohol[is.na(cleanedData$Alcohol)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Alcohol))
+  }
+}
+
+table(is.na(cleanedData$Alcohol))
+```
+
+Polio seems to be random so I will do random by country when available
+```{r, include=FALSE}
+missingPolio = cleanedData[is.na(cleanedData$Polio)==TRUE,]
+countrycount = data.frame(table(missingPolio$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Polio[is.na(cleanedData$Polio)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Polio[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Polio[is.na(cleanedData$Polio)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Polio))
+  }
+}
+
+table(is.na(cleanedData$Polio))
+```
+
+Schooling is missing completely for some countries, so those values will be set to the overall average
+```{r, include=FALSE}
+missingSchooling = cleanedData[is.na(cleanedData$Schooling)==TRUE,]
+countrycount = data.frame(table(missingSchooling$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Schooling[is.na(cleanedData$Schooling)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Schooling[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Schooling[is.na(cleanedData$Schooling)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Schooling))
+  }
+}
+
+table(is.na(cleanedData$Schooling))
+```
+
+Income Composition same as schooling
+```{r, include=FALSE}
+missingIncome = cleanedData[is.na(cleanedData$Income.composition.of.resources)==TRUE,]
+countrycount = data.frame(table(missingIncome$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Income.composition.of.resources[is.na(cleanedData$Income.composition.of.resources)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Income.composition.of.resources[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Income.composition.of.resources[is.na(cleanedData$Income.composition.of.resources)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Income.composition.of.resources))
+  }
+}
+
+table(is.na(cleanedData$Income.composition.of.resources))
+```
+
+Total Expenditure set to avgs
+```{r, include=FALSE}
+missingTE = cleanedData[is.na(cleanedData$Total.expenditure)==TRUE,]
+countrycount = data.frame(table(missingTE$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for incomplete countries
+  if(countrycount$Freq[d]!=16){
+    cleanedData$Total.expenditure[is.na(cleanedData$Total.expenditure)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Total.expenditure[cleanedData$Country==countrycount$Var1[d]]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$Total.expenditure[is.na(cleanedData$Total.expenditure)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$Total.expenditure))
+  }
+}
+
+table(is.na(cleanedData$Total.expenditure))
+```
+
+Thinness 5 to 9 missing values will be set to avg for developing countries
+```{r, include=FALSE}
+missingThin59 = cleanedData[is.na(cleanedData$thinness.5.9.years)==TRUE,]
+countrycount = data.frame(table(missingThin59$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+cleanedData$thinness.5.9.years[is.na(cleanedData$thinness.5.9.years)==TRUE] = mean(na.omit(cleanedData$thinness.5.9.years[Status=="Developing"]))
+
+table(is.na(cleanedData$thinness.5.9.years))
+```
+
+thinness 10 to 19 same as 5 to 9
+```{r, include=FALSE}
+missingThin1019 = cleanedData[is.na(cleanedData$thinness..1.19.years)==TRUE,]
+countrycount = data.frame(table(missingThin1019$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+cleanedData$thinness..1.19.years[is.na(cleanedData$thinness..1.19.years)==TRUE] = mean(na.omit(cleanedData$thinness..1.19.years[Status=="Developing"]))
+
+table(is.na(cleanedData$thinness..1.19.years))
+```
+
+GDP is missing a lot of values, so missing values will be set to the avg gdp per status.
+```{r, include=FALSE}
+missingGDP = cleanedData[is.na(cleanedData$GDP)==TRUE,]
+countrycount = data.frame(table(missingGDP$Country))
+countrycount = countrycount[order(countrycount$Freq),]
+countrycount = countrycount[countrycount$Freq!=0,]
+countrycount
+
+for(d in 1:length(countrycount$Var1)){
+  #Conditional Statement for Developing Countries
+  if(cleanedData$Status[Country==countrycount$Var1[d]][1]=="Developing"){
+    cleanedData$GDP[is.na(cleanedData$GDP)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$GDP[cleanedData$Status=="Developing"]))
+    
+  }
+  #Conditional Statement for Countries missing all data
+  else{
+    cleanedData$GDP[is.na(cleanedData$GDP)==TRUE & Country==countrycount$Var1[d]] = mean(na.omit(cleanedData$GDP[cleanedData$Status=="Developed"]))
+  }
+}
+
+table(is.na(cleanedData$GDP))
+```
+
+## Initial Data Exploration
+
+
+```{r, include=FALSE}
+attach(cleanedData)
+```
+
+We have begun our exploration by setting a seed value and splitting the data 85/15 into training and testing sets respectively.
+```{r}
+#Initial Data Exploration
+
+
+set.seed(7777)
+index<-sample(1:dim(cleanedData)[1],.85*dim(cleanedData)[1],replace=F)
+train<-cleanedData[index,]
+test<-cleanedData[-index,]
+```
+
+
+A summary was then conducted on the overall data. 
+```{r}
+
+summary(cleanedData)
+```
+
+We can see a large difference between the categories for the Status Further exploration was conducted on the status variable.
+```{r}
+t(aggregate(Life.expectancy~Status,data=cleanedData,summary))
+t(aggregate(Life.expectancy~Status,data=cleanedData,sd))
+```
+
+From the results above, we can see that there is unequal variance between the two categories, inferring that we should investigate an interactive relationship involving the status variable. Continuing on, correlation plots were recorded for various columns that may be colinear as well as a set of variables that may be useful predictors in predicting Life Expectancy.
+```{r}
+#Thinness 5 to 9 and Thinness 10 to 18
+pairs(cleanedData[,c(19,20)])
+
+#Under Five Deaths and Infant Deaths
+pairs(cleanedData[,c(6, 12)])
+
+
+#everything
+#everything = pairs(cleanedData)
+
+# 2 pairs functions for the Selected Variables: Adult Mortality, Under Five Deaths, Percentage Expenditure
+# Hepatitis B, Polio, Measles, BMI, HIV Aids, Schooling, Income Composition, Diptheria
+pairs(cleanedData[,c(4, 5, 8, 9, 10)])
+pairs(cleanedData[,c(4, 11, 12, 13, 15)])
+pairs(cleanedData[,c(4, 16, 21, 22)])
+```
+From the display above, we can see that there is noticeable colinearity between Infant Deaths and Deaths Under Five as well as Thinness 1 to 19 and Thinness 5 to 9. Moving on, I have chosen to find the VIF values of the full model.
+
+```{r}
+full.model<-lm(Life.expectancy~.,data=cleanedData[,c(-1)])
+alias(lm(Life.expectancy~.,data=cleanedData[,c(-1)]))
+vif(full.model)
+```
+
+As we can see above, the VIF values for Infant Deaths and Under Five Deaths are extremely high. Based on this and the pairs result above, I have removed the variables infant.deaths and Thinness 10 to 19 years before recalculating the VIFs, I also remove the GDP variable because it seems to be correlated with Percentage Expendature.
+
+```{r}
+#model with correlated variables found above removed
+noCor.model<-lm(Life.expectancy~., data=cleanedData[,c(-1,-6,-17,-19,-23,-24,-25,-26)])
+noCor.model<-lm(Life.expectancy~., data = train[,c(-1,-6,-17,-19,-23,-24,-25,-26)])
+vif(noCor.model)
+```
+
+After removing the Infant death and thinness I have chosen to observe the residuals of the full model with the removed colinear variables
+```{r}
+par(mfrow=c(2,2))
+plot(noCor.model)
+
+# Cooks D Analysis
+cooksd <- cooks.distance(noCor.model)
+# Plot the Cook's Distance using the traditional 4/n criterion
+sample_size <- nrow(cleanedData)
+plot(cooksd, pch=".", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+```
+Based on the plots above, there is no immediate concern for the residuals. They all appear to be randomly distributed across a normal distribution. The QQ plot also seems to indicate normality. On top of this, a further analysis of the outliers shows that the outlier with a relatively considerable cook's distance is negligible with a value of less than .1.
+
+After importing the olsrr package, a stepwise selection method was performed on the full cleaned model
+
+```{r}
+noCor.selection.model<-lm(Life.expectancy~., data = train[,c(-1,-6,-17,-19)])
+ols_step_both_p(noCor.selection.model, prem = 0.05, pent = 0.05, details = FALSE)
+ols_step_forward_p(noCor.selection.model, penter=.05, details=FALSE)
+ols_step_backward_p(noCor.selection.model)
+```
+
+```{r}
+initialCustom.model = lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Schooling+HIV.AIDS+Diphtheria+percentage.expenditure+BMI+Polio+Status+Measles, data = train)
+plot(initialCustom.model)
+summary(initialCustom.model)
+
+v2.selection = lm(cleanedData$Life.expectancy~., data = cleanedData[,c(5, 8, 9, 10, 11, 12, 13, 15, 16, 21, 22)])
+ols_step_both_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
+ols_step_backward_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
+ols_step_forward_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
+plot(v2.selection)
+```
+#Objective 2
+##Complex MLR
+```{r}
+pairs(cleanedData[,c(4, 5, 8, 9, 10, 11, 12, 13, 15, 16, 21, 22)])
+```
+
+```{r}
+#investigating complex relationships 
+par(mfrow=c(2,2))
+plot(x = HIV.AIDS, y = Life.expectancy)
+plot(x = Adult.Mortality, y = Life.expectancy)
+plot(x = Income.composition.of.resources, y = Schooling)
+plot(x = Income.composition.of.resources * Schooling, y = Life.expectancy)
+
+#Adding in transformations and interactions
+cleanedData$rootAdultMortality = sqrt(Adult.Mortality)
+cleanedData$rootHIVAIDS = sqrt(HIV.AIDS)
+cleanedData$IncomeXSchooling = Income.composition.of.resources * Schooling
+cleanedData$RootIncomeXSchooling = sqrt(cleanedData$IncomeXSchooling)
+
+#recreating test and training set
+set.seed(42)
+trainIndices= sample(1:dim(cleanedData)[1],round(.85 * dim(cleanedData)[1]))
+train = cleanedData[trainIndices,]
+test = cleanedData[-trainIndices,]
+
+v3.selection = lm(train$Life.expectancy~., data = train[,c(5, 8, 9, 10, 11, 12, 13, 15, 16, 21, 22, 23, 24, 25,26)])
+ols_step_both_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
+#ols_step_backward_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
+#ols_step_forward_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
+
+complexMLR.model = lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Schooling+sqrt(HIV.AIDS)+Income.composition.of.resources*Schooling+sqrt(Income.composition.of.resources)*Schooling, data = train)
+par(mfrow=c(2,2))
+plot(complexMLR.model)
+
+# Cooks D Analysis
+cooksd <- cooks.distance(complexMLR.model)
+# Plot the Cook's Distance using the traditional 4/n criterion
+sample_size <- nrow(train)
+plot(cooksd, pch=".", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+```
+
+## Nonparametric Models
+### knn Classification Models for Predicting Status
+```{r}
+
+#KNN Model for predicting status of a country using variables from v3.selection
+set.seed(777)
+accs = data.frame(accuracy = numeric(30), k = numeric(30))
+for(i in 1:30)
+{
+  classifications = knn(train[,c(5, 21,22,24,25,26,16,15,23,12)], test[,c(5, 21,22,24,25,26,16,15,23,12)], train$Status, prob = TRUE, k = i, use.all = TRUE)
+  table(test$Status,classifications)
+  CM = confusionMatrix(table(test$Status,classifications))
+  accs$accuracy[i] = CM$overall[1]
+  accs$k[i] = i
+}
+ggplot(accs, aes(x = k, y = accuracy)) + geom_line() #Best K is 3
+
+#KNN Model for predicting status of a country using variables from v3.selection + life expectancy
+accs = data.frame(accuracy = numeric(30), k = numeric(30))
+for(i in 1:30)
+{
+  classifications = knn(train[,c(4, 5, 21,22,24,25,26,16,15,23,12)], test[,c(4, 5, 21,22,24,25,26,16,15,23,12)], train$Status, prob = TRUE, k = i, use.all = TRUE)
+  table(test$Status,classifications)
+  CM = confusionMatrix(table(test$Status,classifications))
+  accs$accuracy[i] = CM$overall[1]
+  accs$k[i] = i
+}
+ggplot(accs, aes(x = k, y = accuracy)) + geom_line() #Best K is 7
+
+```
+
+### KNN Regression Models
+```{r}
+#recreating test and training set seed value = 42
+#dropping population column
+cleanedData2 = cleanedData[,-18]
+cleanedData2$Country=as.factor(cleanedData2$Country)
+#Converting Status to binary numeric for inclusion in KNN Regression model: 1 -> Developed, 0 -> Developing
+levels(cleanedData2$Status) =  c(1,0)
+cleanedData2$Status = as.numeric((cleanedData2$Status))
+set.seed(42)
+trainIndices= sample(1:dim(cleanedData2)[1],round(.85 * dim(cleanedData2)[1]))
+train = cleanedData2[trainIndices,]
+test = cleanedData2[-trainIndices,]
+
+#Model 1 regression using full model including status
+# extracting x input and y labels 
+train_x = train[,c(-1,-4)]
+train_x = scale(train_x)[,]
+train_y = train[,4]
+test_x = test[,c(-1,-4)]
+test_x = scale(test_x)[,]
+test_y = test[,4]
+knnmodel = knnreg(train_x, train_y)
+str(knnmodel)
+pred_y = predict(knnmodel, data.frame(test_x))
+
+print(data.frame(test_y, pred_y))
+
+mse = mean((test_y - pred_y)^2)
+mae = caret::MAE(test_y, pred_y)
+rmse = caret::RMSE(test_y, pred_y)
+
+cat("MSE: ", mse, "MAE: ", mae, " RMSE: ", rmse)
+
+x = 1:length(test_y)
+test_y = test_y[order(test_y)]
+pred_y = pred_y[order(pred_y)]
+plot(x, test_y, col = "red", type = "l", lwd=2,
+     main = "Life Expectancy test data prediction")
+lines(x, pred_y, col = "blue", lwd=2)
+legend("topright",  legend = c("Actual Value", "Predicted Value"), 
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+```{r}
+#Model 1 regression using full model EXCLUDING status
+# extracting x input and y labels 
+train_x = train[,c(-1,-3,-4)]
+train_x = scale(train_x)[,]
+train_y = train[,4]
+test_x = test[,c(-1,-3,-4)]
+test_x = scale(test_x)[,]
+test_y = test[,4]
+set.seed(42)
+knnmodel = knnreg(train_x, train_y)
+str(knnmodel)
+pred_y = predict(knnmodel, data.frame(test_x))
+
+print(data.frame(test_y, pred_y))
+
+mse = mean((test_y - pred_y)^2)
+mae = caret::MAE(test_y, pred_y)
+rmse = caret::RMSE(test_y, pred_y)
+
+cat("MSE: ", mse, "MAE: ", mae, " RMSE: ", rmse)
+
+x = 1:length(test_y)
+test_y = test_y[order(test_y)]
+pred_y = pred_y[order(pred_y)]
+plot(x, test_y, col = "red", type = "l", lwd=2,
+     main = "Life Expectancy test data prediction")
+lines(x, pred_y, col = "blue", lwd=2)
+legend("topright",  legend = c("Actual Value", "Predicted Value"), 
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+```{r}
+#KNN Regression Model Using variables from selection3
+# extracting x input and y labels 
+train_x = train[,c(5, 20,21,23,24,25,16,15,22,12)]
+train_x = scale(train_x)[,]
+train_y = train[,4]
+test_x = test[,c(5, 20,21,23,24,25,16,15,22,12)]
+test_x = scale(test_x)[,]
+test_y = test[,4]
+set.seed(42)
+knnmodel = knnreg(train_x, train_y)
+str(knnmodel)
+pred_y = predict(knnmodel, data.frame(test_x))
+
+print(data.frame(test_y, pred_y))
+
+mse = mean((test_y - pred_y)^2)
+mae = caret::MAE(test_y, pred_y)
+rmse = caret::RMSE(test_y, pred_y)
+
+cat("MSE: ", mse, "MAE: ", mae, " RMSE: ", rmse)
+
+x = 1:length(test_y)
+test_y = test_y[order(test_y)]
+pred_y = pred_y[order(pred_y)]
+plot(x[1:100], test_y[1:100], col = "red", type = "l", lwd=2,
+     main = "Life Expectancy test data prediction")
+lines(x[1:100], pred_y[1:100], col = "blue", lwd=2)
+#legend("topright",  legend = c("Actual Value", "Predicted Value"), 
+       #fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+### Regression Tree Models
+full model
+```{r}
+tree.model <- rpart(
+  formula = Life.expectancy ~ .,
+  data    = train,
+  method  = "anova"
+)
+
+#rpart.plot(tree.model)
+plotcp(tree.model)
+printcp(tree.model)
+```
+
+using selection 3 variables
+```{r}
+tree.model <- rpart(
+  formula = Life.expectancy ~ .,
+  data    = train[,c(1,4,5, 20,21,23,24,25,16,15,22,12)],
+  method  = "anova"
+)
+
+#rpart.plot(tree.model)
+plotcp(tree.model)
+printcp(tree.model)
+```
+
