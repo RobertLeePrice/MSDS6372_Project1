@@ -2,7 +2,9 @@
 title: "6372 Stats 2 Project 1"
 author: "Chad Kwong"
 date: "5/30/2022"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -32,7 +34,8 @@ attach(cleanedData)
 
 # Objective 1
 ## Missing Values
-```{r, include=FALSE}
+### Initial Missing Value Investigation
+```{r}
 table(is.na(lifeExpectancyData))
 #Gathering all na values
 #create data frame with 0 rows and 4 columns
@@ -57,8 +60,8 @@ naCol
 #vis_miss(lifeExpectancyData %>% select_if(~any(is.na(.))))
 #gg_miss_upset(lifeExpectancyData)
 ```
-###Approaching NA Values
-```{r include=FALSE}
+### Approaching NA Values
+```{r}
 #investigating missing life expectancy values
 #Each entry that is missing life expectancy values contain single entries in the dataframe. 
 #Therefore I have chosen to remove all rows that have na values for life expectancy
@@ -85,7 +88,7 @@ attach(cleanedData)
 ```
 
 Hep B
-```{r, include=FALSE}
+```{r}
 #investigating hepatitis B
 missingHep = cleanedData[is.na(cleanedData$Hepatitis.B)==TRUE,]
 countrycount = data.frame(table(missingHep$Country))
@@ -109,7 +112,7 @@ table(is.na(cleanedData$Hepatitis.B))
 ```
 
 BMI
-```{r, include=FALSE}
+```{r}
 # Approaching BMI
 missingBMI = cleanedData[is.na(BMI)==TRUE,]
 countrycount = data.frame(table(missingBMI$Country))
@@ -133,7 +136,7 @@ table(is.na(cleanedData$BMI))
 ```
 
 Diphtheria
-```{r, include=FALSE}
+```{r}
 # Approaching Diphtheria
 missingDip = cleanedData[is.na(Diphtheria)==TRUE,]
 countrycount = data.frame(table(missingDip$Country))
@@ -157,7 +160,7 @@ table(is.na(cleanedData$Diphtheria))
 ```
 
 Alcohol (setting all missing values to country avg if possible and overall avg where not available). Many missing values were for the most recent year available. After analyzing trends on a rudimentary level, I have chosen to set the missing values to the country average for what data is available.
-```{r, include=FALSE}
+```{r}
 #analyzing random stretch of data
 stretch = cleanedData[100:200,c(1,2,7)]
 # Approaching Alcohol
@@ -183,7 +186,7 @@ table(is.na(cleanedData$Alcohol))
 ```
 
 Polio seems to be random so I will do random by country when available
-```{r, include=FALSE}
+```{r}
 missingPolio = cleanedData[is.na(cleanedData$Polio)==TRUE,]
 countrycount = data.frame(table(missingPolio$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -206,7 +209,7 @@ table(is.na(cleanedData$Polio))
 ```
 
 Schooling is missing completely for some countries, so those values will be set to the overall average
-```{r, include=FALSE}
+```{r}
 missingSchooling = cleanedData[is.na(cleanedData$Schooling)==TRUE,]
 countrycount = data.frame(table(missingSchooling$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -229,7 +232,7 @@ table(is.na(cleanedData$Schooling))
 ```
 
 Income Composition same as schooling
-```{r, include=FALSE}
+```{r}
 missingIncome = cleanedData[is.na(cleanedData$Income.composition.of.resources)==TRUE,]
 countrycount = data.frame(table(missingIncome$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -252,7 +255,7 @@ table(is.na(cleanedData$Income.composition.of.resources))
 ```
 
 Total Expenditure set to avgs
-```{r, include=FALSE}
+```{r}
 missingTE = cleanedData[is.na(cleanedData$Total.expenditure)==TRUE,]
 countrycount = data.frame(table(missingTE$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -275,7 +278,7 @@ table(is.na(cleanedData$Total.expenditure))
 ```
 
 Thinness 5 to 9 missing values will be set to avg for developing countries
-```{r, include=FALSE}
+```{r}
 missingThin59 = cleanedData[is.na(cleanedData$thinness.5.9.years)==TRUE,]
 countrycount = data.frame(table(missingThin59$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -288,7 +291,7 @@ table(is.na(cleanedData$thinness.5.9.years))
 ```
 
 thinness 10 to 19 same as 5 to 9
-```{r, include=FALSE}
+```{r}
 missingThin1019 = cleanedData[is.na(cleanedData$thinness..1.19.years)==TRUE,]
 countrycount = data.frame(table(missingThin1019$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -301,7 +304,7 @@ table(is.na(cleanedData$thinness..1.19.years))
 ```
 
 GDP is missing a lot of values, so missing values will be set to the avg gdp per status.
-```{r, include=FALSE}
+```{r}
 missingGDP = cleanedData[is.na(cleanedData$GDP)==TRUE,]
 countrycount = data.frame(table(missingGDP$Country))
 countrycount = countrycount[order(countrycount$Freq),]
@@ -380,7 +383,11 @@ alias(lm(Life.expectancy~.,data=cleanedData[,c(-1)]))
 vif(full.model)
 ```
 
-As we can see above, the VIF values for Infant Deaths and Under Five Deaths are extremely high. Based on this and the pairs result above, I have removed the variables infant.deaths and Thinness 10 to 19 years before recalculating the VIFs, I also remove the GDP variable because it seems to be correlated with Percentage Expendature.
+As we can see above, the VIF values for Infant Deaths and Under Five Deaths are extremely high. Based on this and the pairs result above, I have removed the variables infant.deaths and Thinness 10 to 19 years before recalculating the VIFs, I also remove the GDP variable because it seems to be correlated with Percentage Expendature. Income composition and schooling appear to be correlated as well based off of the VIF values. Considering a large correlation constant between schooling and income composition, I have elected to remove 
+
+```{r}
+cor(Schooling, Income.composition.of.resources)
+```
 
 ```{r}
 #model with correlated variables found above removed
@@ -391,87 +398,143 @@ vif(noCor.model)
 
 After removing the Infant death and thinness I have chosen to observe the residuals of the full model with the removed colinear variables
 ```{r}
-par(mfrow=c(2,2))
-plot(noCor.model)
-
 # Cooks D Analysis
 cooksd <- cooks.distance(noCor.model)
 # Plot the Cook's Distance using the traditional 4/n criterion
 sample_size <- nrow(cleanedData)
-plot(cooksd, pch=".", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+plot(cooksd, pch=".", cex=2, main="Cook's Distance Obs")  # plot cook's distance
 abline(h = 4/sample_size, col="red")  # add cutoff line
 text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+
+par(mfrow=c(2,2))
+plot(noCor.model)
 ```
 Based on the plots above, there is no immediate concern for the residuals. They all appear to be randomly distributed across a normal distribution. The QQ plot also seems to indicate normality. On top of this, a further analysis of the outliers shows that the outlier with a relatively considerable cook's distance is negligible with a value of less than .1.
 
-After importing the olsrr package, a stepwise selection method was performed on the full cleaned model
+After importing the olsrr package, a stepwise selection method was performed on the full cleaned model without the Country variable. The reason Country was not included in this models is because the models will produce parameters for each country within the dataset. For the purpose of shortening the interpretation of the model, we have decided to exclude the country variable from our models
 
 ```{r}
+
+#performing selection methods on dataset with Country, Infant Deaths, GDP, and Thinness 10 to 19 removed
 noCor.selection.model<-lm(Life.expectancy~., data = train[,c(-1,-6,-17,-19)])
 ols_step_both_p(noCor.selection.model, prem = 0.05, pent = 0.05, details = FALSE)
 ols_step_forward_p(noCor.selection.model, penter=.05, details=FALSE)
 ols_step_backward_p(noCor.selection.model)
 ```
-
+Then further exploration was performed on full models including both Income and Schooling to models with just one of the variables.
 ```{r}
-initialCustom.model = lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Schooling+HIV.AIDS+Diphtheria+percentage.expenditure+BMI+Polio+Status+Measles, data = train)
-plot(initialCustom.model)
-summary(initialCustom.model)
-
-v2.selection = lm(cleanedData$Life.expectancy~., data = cleanedData[,c(5, 8, 9, 10, 11, 12, 13, 15, 16, 21, 22)])
-ols_step_both_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
-ols_step_backward_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
-ols_step_forward_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
-plot(v2.selection)
+test.model.1<-lm(Life.expectancy~., data = train[,c(-1,-6,-17,-19)])
+test.model.2<-lm(Life.expectancy~., data = train[,c(-1,-6,-17,-19,-21)])
+test.model.3<-lm(Life.expectancy~., data = train[,c(-1,-6,-17,-19,-22)])
+ols_step_both_p(test.model.1, prem = 0.05, pent = 0.05, details = FALSE)
+ols_step_both_p(test.model.2, prem = 0.05, pent = 0.05, details = FALSE)
+ols_step_both_p(test.model.1, prem = 0.05, pent = 0.05, details = FALSE)
 ```
-#Objective 2
-##Complex MLR
+The tables above justify including both Income and schooling in the models
+
+This next chunk performs a second selection process on the variable set obtained in the selection process above to refine our model even further.
+```{r}
+v2.selection = lm(train$Life.expectancy~., data = train[,c(5, 8,9, 10, 11, 12, 13, 15, 16, 21, 22)])
+stepwise = ols_step_both_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
+stepwise
+#ols_step_backward_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
+#ols_step_forward_p(v2.selection, prem = 0.05, pent = 0.05, details = FALSE)
+
+final.simple.model = lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Schooling+HIV.AIDS+Polio+BMI+percentage.expenditure+Diphtheria, data = train)
+summary(final.simple.model)
+confint(final.simple.model)
+MSE = mean(summary(final.simple.model)$residuals^2)
+MSE
+sqrt(MSE)
+
+#Residual Plots
+# Cooks D Analysis
+cooksd <- cooks.distance(final.simple.model)
+# Plot the Cook's Distance using the traditional 4/n criterion
+sample_size <- nrow(train)
+plot(cooksd, pch=".", cex=2, main="Cook's Distance Obs")  # plot cook's distance
+abline(h = 4/sample_size, col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+#plotting residual plots
+par(mfrow=c(2,2))
+plot(final.simple.model)
+```
+
+# Objective 2
+
+## Complex MLR
+
 ```{r}
 pairs(cleanedData[,c(4, 5, 8, 9, 10, 11, 12, 13, 15, 16, 21, 22)])
 ```
 
 ```{r}
 #investigating complex relationships 
-par(mfrow=c(2,2))
-plot(x = HIV.AIDS, y = Life.expectancy)
-plot(x = Adult.Mortality, y = Life.expectancy)
+par(mfrow=c(1,1))
 plot(x = Income.composition.of.resources, y = Schooling)
+par(mfrow=c(2,1))
 plot(x = Income.composition.of.resources * Schooling, y = Life.expectancy)
+plot(x = sqrt(Income.composition.of.resources)*Schooling, y = Life.expectancy)
+par(mfrow=c(1,2))
+plot(x = Income.composition.of.resources * Schooling, y = Life.expectancy, xlab = "Income Comp")
+plot(x = sqrt(Income.composition.of.resources)*Schooling, y = Life.expectancy, xlab="(Income Comp)^(1/2)")
+
+par(mfrow=c(1,2))
+plot(x = HIV.AIDS, y = Life.expectancy)
+plot(x = sqrt(HIV.AIDS), y = Life.expectancy)
+
+par(mfrow=c(1,2))
+plot(x = Adult.Mortality, y = Life.expectancy)
+plot(x = sqrt(Adult.Mortality), Life.expectancy)
+
 
 #Adding in transformations and interactions
 cleanedData$rootAdultMortality = sqrt(Adult.Mortality)
 cleanedData$rootHIVAIDS = sqrt(HIV.AIDS)
 cleanedData$IncomeXSchooling = Income.composition.of.resources * Schooling
 cleanedData$RootIncomeXSchooling = sqrt(cleanedData$IncomeXSchooling)
+```
 
+Complex Model Selection Process
+```{r}
 #recreating test and training set
 set.seed(42)
 trainIndices= sample(1:dim(cleanedData)[1],round(.85 * dim(cleanedData)[1]))
 train = cleanedData[trainIndices,]
 test = cleanedData[-trainIndices,]
 
+#Performing stepwise selection on dataset including transformations with no interaction terms
 v3.selection = lm(train$Life.expectancy~., data = train[,c(5, 8, 9, 10, 11, 12, 13, 15, 16, 21, 22, 23, 24, 25,26)])
-ols_step_both_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
+v3.selection.method = ols_step_both_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
+v3.selection.method
+mse = mean(v3.selection.method$model$residuals^2)
+sqrt(mse)
 #ols_step_backward_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
 #ols_step_forward_p(v3.selection, prem = 0.05, pent = 0.05, details = FALSE)
+```
 
-complexMLR.model = lm(Life.expectancy~Adult.Mortality+Income.composition.of.resources+Schooling+sqrt(HIV.AIDS)+Income.composition.of.resources*Schooling+sqrt(Income.composition.of.resources)*Schooling, data = train)
-par(mfrow=c(2,2))
-plot(complexMLR.model)
+```{r}
+final.complex.model = v3.selection.method$model
+summary(final.complex.model)
+MSE = mean(summary(final.complex.model)$residuals^2)
+MSE
+sqrt(MSE)
 
 # Cooks D Analysis
-cooksd <- cooks.distance(complexMLR.model)
+cooksd <- cooks.distance(final.complex.model)
 # Plot the Cook's Distance using the traditional 4/n criterion
 sample_size <- nrow(train)
-plot(cooksd, pch=".", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+plot(cooksd, pch=".", cex=2, main="Cook's Distance Obs")  # plot cook's distance
 abline(h = 4/sample_size, col="red")  # add cutoff line
 text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4/sample_size, names(cooksd),""), col="red")  # add labels
+#Plotting residual plots
+par(mfrow=c(2,2))
+plot(final.complex.model)
 ```
 
 ## Nonparametric Models
 ### knn Classification Models for Predicting Status
 ```{r}
-
 #KNN Model for predicting status of a country using variables from v3.selection
 set.seed(777)
 accs = data.frame(accuracy = numeric(30), k = numeric(30))
@@ -525,7 +588,7 @@ knnmodel = knnreg(train_x, train_y)
 str(knnmodel)
 pred_y = predict(knnmodel, data.frame(test_x))
 
-print(data.frame(test_y, pred_y))
+#print(data.frame(test_y, pred_y))
 
 mse = mean((test_y - pred_y)^2)
 mae = caret::MAE(test_y, pred_y)
@@ -537,7 +600,7 @@ x = 1:length(test_y)
 test_y = test_y[order(test_y)]
 pred_y = pred_y[order(pred_y)]
 plot(x, test_y, col = "red", type = "l", lwd=2,
-     main = "Life Expectancy test data prediction")
+     main = "Life Expectancy Predictions")
 lines(x, pred_y, col = "blue", lwd=2)
 legend("topright",  legend = c("Actual Value", "Predicted Value"), 
        fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
@@ -558,7 +621,7 @@ knnmodel = knnreg(train_x, train_y)
 str(knnmodel)
 pred_y = predict(knnmodel, data.frame(test_x))
 
-print(data.frame(test_y, pred_y))
+#print(data.frame(test_y, pred_y))
 
 mse = mean((test_y - pred_y)^2)
 mae = caret::MAE(test_y, pred_y)
@@ -570,7 +633,7 @@ x = 1:length(test_y)
 test_y = test_y[order(test_y)]
 pred_y = pred_y[order(pred_y)]
 plot(x, test_y, col = "red", type = "l", lwd=2,
-     main = "Life Expectancy test data prediction")
+     main = "Life Expectancy Predictions")
 lines(x, pred_y, col = "blue", lwd=2)
 legend("topright",  legend = c("Actual Value", "Predicted Value"), 
        fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
@@ -578,7 +641,7 @@ grid()
 ```
 
 ```{r}
-#KNN Regression Model Using variables from selection3
+#KNN Regression Model Using variables from selection 3
 # extracting x input and y labels 
 train_x = train[,c(5, 20,21,23,24,25,16,15,22,12)]
 train_x = scale(train_x)[,]
@@ -591,7 +654,7 @@ knnmodel = knnreg(train_x, train_y)
 str(knnmodel)
 pred_y = predict(knnmodel, data.frame(test_x))
 
-print(data.frame(test_y, pred_y))
+#print(data.frame(test_y, pred_y))
 
 mse = mean((test_y - pred_y)^2)
 mae = caret::MAE(test_y, pred_y)
@@ -602,9 +665,9 @@ cat("MSE: ", mse, "MAE: ", mae, " RMSE: ", rmse)
 x = 1:length(test_y)
 test_y = test_y[order(test_y)]
 pred_y = pred_y[order(pred_y)]
-plot(x[1:100], test_y[1:100], col = "red", type = "l", lwd=2,
-     main = "Life Expectancy test data prediction")
-lines(x[1:100], pred_y[1:100], col = "blue", lwd=2)
+plot(x, test_y[1:100], col = "red", type = "l", lwd=2,
+     main = "Life Expectancy Predictions")
+lines(x, pred_y[1:100], col = "blue", lwd=2)
 #legend("topright",  legend = c("Actual Value", "Predicted Value"), 
        #fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
 grid()
