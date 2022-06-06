@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
 ## 01 - Introduction
 
 For this analysis, we will use the life expectancy dataset collected by the 
@@ -31,8 +32,14 @@ library(ggthemes)
 library(scales)
 library(broom)
 library(naniar)
+library(caret)
 library(Metrics)
 library(corrplot)
+library(mice)
+library(imputeTS)
+library(e1071)
+library(gridExtra)
+library(olsrr)
 ```
 
 ## 02 - Summary of Data Set
@@ -114,6 +121,28 @@ vis_miss(
 
 # visualize combinations and intersections of missing values
 gg_miss_upset(renamed_df)
+
+# create a summary data frame of missing value counts and percentages 
+missing_summary_df <- renamed_df %>%
+  miss_var_summary() %>%
+  mutate(missing = n_miss > 0) %>%
+  filter(missing == T)
+
+missing_summary_df
+
+# visualize the percentage of missing variables in the dataset
+missing_summary_df %>%
+  ggplot(
+    aes(x=reorder(variable, pct_miss), 
+        y=pct_miss, color=missing, fill=missing)) +
+    geom_bar(stat='identity', position='dodge', width=0) + 
+    geom_point() +
+    coord_flip() +
+    scale_colour_manual(values = c('#c0392b', '#8E9796')) +
+    scale_fill_manual(values = c('#c0392b', '#8E9796')) +
+    labs(title='Missing Values by Feature', x='', y='Percent Missing (%)') +
+    theme_minimal() +
+    theme(legend.position='none')
 ```
 
 **Columns with Missing Values**
@@ -151,10 +180,16 @@ renamed_df %>%
 #### Initial Data Cleaning
 
 ```{r}
+# count the number of records where life expectancy is missing
+count_missing_le <- renamed_df %>% 
+  filter(is.na(life_expectancy)) %>% count()
+paste0('Number of records missing the response variable, life expectancy: ', 
+       count_missing_le)
+
 # drop rows where life expectancy is not defined
 drop_le_records_df <- renamed_df %>% drop_na(life_expectancy)
 
-# drop population from dataset
+# drop population variable from dataset
 drop_population_df <- 
   drop_le_records_df[, !(names(drop_le_records_df) %in% c('population'))]
 ```
@@ -177,11 +212,131 @@ columns_to_factor <- c('country', 'status')
 factorized_df <- factorize_columns(drop_population_df, columns_to_factor)
 ```
 
-#### Hepatitis B
+
+#### Missing Value Imputation
+
+```{r, echo=FALSE}
+# drop records for testing imputation
+imputation_copy_df <- factorized_df %>% drop_na()
+
+# set constants to control calculation
+n_miss <- 80
+interations <- 20
+imputation_methods <- c('Mean', 'Median', 'Group Means') # c('Mean', 'Median', 'MICE')
+
+imputation_results <- setNames(
+  data.frame(matrix(ncol=3, nrow=0)), c('Method', 'X', 'RMSE'))
+
+# loop over methods and create scoring metrics
+for (method in imputation_methods) {
+  if (method == 'Mean') {
+    for (i in 1:interations) {
+
+      # create a test of the dataframe to test imputation methods
+      imputation_df <- imputation_copy_df
+    
+      # randomly set null values in dataset
+      imputation_df[sample(1:nrow(imputation_df), n_miss), 'hepatitis_b'] <- NA
+    
+      # mean imputation
+      imputer <- imputation_df %>% 
+        group_by(country)
+        
+      # imputer <- Hmisc::impute(imputation_df$hepatitis_b, mean)
+    
+      # calculate actual and predicted
+      actuals <- imputation_copy_df$hepatitis_b[is.na(imputation_df$hepatitis_b)]
+      predicted <- rep(mean(imputation_df$hepatitis_b, na.rm=T), length(actuals))
+    
+      # create new row for dataframe
+      new_row <- c(method, i, rmse(actuals, predicted))
+      imputation_results[nrow(imputation_results) + 1, ] <- new_row
+      
+    }
+    
+  }
+  
+  if (method == 'Median') {
+    for (i in 1:interations) {
+
+      # create a test of the dataframe to test imputation methods
+      imputation_df <- imputation_copy_df
+    
+      # randomly set null values in dataset
+      imputation_df[sample(1:nrow(imputation_df), n_miss), 'hepatitis_b'] <- NA
+    
+      # mean imputation
+      imputer <- Hmisc::impute(imputation_df$hepatitis_b, median)
+    
+      # calculate actual and predicted
+      actuals <- imputation_copy_df$hepatitis_b[is.na(imputation_df$hepatitis_b)]
+      predicted <- rep(mean(imputation_df$hepatitis_b, na.rm=T), length(actuals))
+    
+      # create new row for dataframe
+      new_row <- c(method, i, rmse(actuals, predicted))
+      imputation_results[nrow(imputation_results) + 1, ] <- new_row
+      
+      }
+  }
+    
+  if (method == 'MICE') {
+    for (i in 1:interations) {
+
+      # create a test of the dataframe to test imputation methods
+      imputation_df <- imputation_copy_df
+    
+      # randomly set null values in dataset
+      imputation_df[sample(1:nrow(imputation_df), n_miss), 'hepatitis_b'] <- NA
+    
+      # mean imputation
+      mice_model <- mice(imputation_df[, !names(imputation_df) %in% 'life_expectancy'], method="rf")
+      mice_output <- complete(mice_model)
+      
+      actuals <- imputation_copy_df$hepatitis_b[is.na(imputation_df$hepatitis_b)]
+      predicted <- mice_output[is.na(imputation_df$hepatitis_b), 'hepatitis_b']
+
+      # create new row for dataframe
+      new_row <- c(method, i, rmse(actuals, predicted))
+      imputation_results[nrow(imputation_results) + 1, ] <- new_row
+      
+    }
+  }
+  
+}
+
+```
+
 
 ```{r}
+
+imputation_results$X <- as.integer(imputation_results$X)
+imputation_results$RMSE <- as.numeric(imputation_results$RMSE)
+
+
+imputation_results %>% ggplot(aes(x=X, y=RMSE, color=Method)) + 
+  geom_point(shape=1) +
+  expand_limits(x = 0, y = 0) + 
+  labs(title='Comparison of Imputation Methods', x='')
+
+imputation_results %>%
+  group_by(Method) %>%
+  summarise(Avg.RMSE=mean(RMSE))
+```
+
+#### Fill Missing Values
+
+```{r}
+# impute missing values using function
+clean_df <- factorized_df %>% 
+  group_by(country) %>% 
+  mutate_if(
+    is.numeric, 
+    function(x) ifelse(is.na(x), mean(x, na.rm = T), x)) %>%
+  ungroup() %>%
+  na_mean()
+
 # plot the distribution of Hepatitis B on a histogram
-factorized_df %>% ggplot(aes(y=hepatitis_b)) +
+clean_df %>% ggplot(aes(y=hepatitis_b)) +
   geom_histogram(fill='#2c3e50') + 
   labs(
     title='Distribution of Hepatitis B Vaccinations',
@@ -191,28 +346,22 @@ factorized_df %>% ggplot(aes(y=hepatitis_b)) +
 factorized_df %>% ggplot(aes(x=status, y=hepatitis_b)) +
   geom_boxplot()
 
-head(factorized_df)
+# plot box plots from clean dataframe
+clean_df %>% ggplot(aes(x=status, y=hepatitis_b)) +
+  geom_boxplot()
 
-# missing_hep = drop_population_df[is.na(hepatitis_b) == T,]
-# country_count = data.frame(table(missing_hep$country))
-# country_count[order(-country_count$Freq),]
-# popcountrycount[order(-popcountrycount$Freq),]
-# table(countrycount$Freq)
-# missingHepCountries = data.frame("Country" = countrycount$Var1)
-# cleanedData[Country=="Burkina Faso",]
+# verify that all records have been filled
+clean_df %>% miss_var_summary() %>% filter(n_miss > 0)
 ```
 
 ### Boxplots
 
 ```{r}
-# initialize empty list to store plots
-columns_to_factor <- list()
-
 # define negate operator %!in%
 `%!in%` <- Negate(`%in%`)
 
 # define columns to skip plotting
-columns_to_skip <- c('country', 'status')
+columns_to_skip <- c('country', 'status', 'year')
 
 # loop over dataframe and plot box plots 
 for(i in names(drop_population_df)) {
@@ -227,70 +376,93 @@ for(i in names(drop_population_df)) {
 }
 ```
 
-#### Drop Remaining Null Rows
-
-```{r}
-# drop rows where life expectancy is not defined)
-clean_df <- drop_population_df %>% drop_na()
-```
-
 #### Correlation
 
 ```{r}
 # define columns to skip correlation
-columns_to_skip <- cbind(columns_to_factor, 'id')
+columns_to_skip <- c('year', 'country', 'status')
 
 # create dataframe to prepare for correlation analysis
 corr_df <- clean_df[, !(names(clean_df) %in% columns_to_skip)]
 
-cor(corr_df)
+# create a function to flatten the correlation matrix
+flatten_cor_matix <- function(cor_mat, p_mat) {
+  ut <- upper.tri(cor_mat)
+  df <- data.frame(
+    row = rownames(cor_mat)[row(cor_mat)[ut]],
+    column = rownames(cor_mat)[col(cor_mat)[ut]],
+    cor  =(cor_mat)[ut],
+    p = p_mat[ut]
+  )
+  return(df)
+}
 
+# create flattened matrix with p-values
+res2 <- Hmisc::rcorr(as.matrix(corr_df))
+flat_cor_matrix <- flatten_cor_matix(res2$r, res2$P)
+flat_cor_matrix
+
+# filter for specific variables
+flat_cor_matrix %>%
+  filter(row == 'percentage_expenditure')
+
+# plot correlation matrix
 corrplot(
-  cor(corr_df), 
-  # method = 'number
+  cor(corr_df),
   method = 'circle',
+  type = 'lower',
+  hc.order = T,
   order = 'alphabet',
   title = 'Correlation of Continuous Variables',
   number.cex = 0.5,
-  tl.cex = 0.5) 
+  tl.cex = 0.6,
+  tl.col = 'black'
+)
 
-# cor_matrix <- broom::tidy(cor(clean_df[, 1:21])) %>%
-#   rename(Var1 = ".rownames") %>%
-#   gather(Var2, Cor, -Var1)
-# cor_matrix
+
+# plot specific variables on x-y scatter plot
+r <- round(
+  cor(clean_df$thinness_1_19_years, clean_df$thinness_5_9_years), 2)
+clean_df %>% ggplot(aes(x=thinness_1_19_years, y=thinness_5_9_years)) +
+  geom_point(shape=1, color='#2980b9') + 
+  labs(title='Variable Scatter Plot', subtitle=paste0('Correlation Coefficient (r): ', r))
+
+# plot specific variables on x-y scatter plot
+# clean_df %>% ggplot(aes(x=percentage_expenditure, y=gdp)) +
+#   geom_point(shape=1, color='#2980b9')
+
+# plot specific variables on x-y scatter plot
+# clean_df %>% ggplot(aes(x=life_expectancy, y=adult_mortality)) +
+#   geom_point(shape=1, color='#c0392b')
+
+# plot specific variables on x-y scatter plot
+r <- round(
+  cor(clean_df$under_five_deaths, clean_df$infant_deaths), 3)
+clean_df %>% ggplot(aes(x=under_five_deaths, y=infant_deaths)) +
+  geom_point(shape=1, color='#2980b9') + 
+  labs(title='Variable Scatter Plot', subtitle=paste0('Correlation Coefficient (r): ', r))
+
+# plot specific variables on x-y scatter plot
+r <- round(
+  cor(clean_df$schooling, clean_df$income_composition_of_resources), 2)
+clean_df %>% ggplot(aes(x=schooling, y=income_composition_of_resources)) +
+  geom_point(shape=1, color='#2980b9') + 
+  labs(title='Variable Scatter Plot', subtitle=paste0('Correlation Coefficient (r): ', r))
 ```
 
-#### Factorize Categorical Variables
+#### Drop Highly Correlated Variables
 
-```{r data_cleaning}
-# define function for factorizing a list of columns
-factorize_columns = function (df, cols) {
-  for (col in columns_to_factor) {
-    df[, col] <- as.factor(df[, col])
-  } 
-  return (df)
-}
+```{r}
+# define columns to skip correlation
+correlated_columns_to_drop <- c('gdp', 'infant_deaths', 'thinness_10_19_years')
 
-# list of columns to factorize
-columns_to_factor <- c('country', 'status')
-
-# convert columns to factors
-clean_df <- factorize_columns(renamed_df, columns_to_factor)
-
-# manually define columns to remove because of missing values
-columns_to_remove <- c('population', 'hepatitis_b')
-
-# remove columns
-clean_df <- clean_df[, !(names(clean_df) %in% columns_to_remove)]
-
-# add ID column to dataset
-clean_df <- rowid_to_column(clean_df, 'id')
-
-# print dataframe to check conversions
-head(clean_df)
+# create dataframe to prepare for correlation analysis
+no_cor_df <- clean_df[, !(names(clean_df) %in% correlated_columns_to_drop)]
 ```
 
-
+```{r}
+summary(no_cor_df)
+```
 
 
 ## 06 - Feature Engineering & Model 
@@ -299,8 +471,29 @@ head(clean_df)
 #### Split Data into Traning and Testing Sets
 
 ```{r}
+# add ID column to dataset
+model_ready_df <- rowid_to_column(no_cor_df, 'id')
+
+#' Function that splits a dataframe into a training set and test set based 
+#' on a specified split proportion
+#'
+#' Args
+#'  df (data.frame): input dataframe to be split
+#'  split_perc (int): percentage of data assigned to training set 
+#'  
+#' Returns
+#' (list) a list of dataframes: one training and one testing dataset
+train_test_split = function(df, split_perc){
+  
+  train_ind = sample(1:dim(df)[1], round(split_perc * dim(df)[1]))
+  train = df[train_ind,]
+  test = df[-train_ind,]
+  
+  return(list(train=train, test=test))
+}
+
 # split data into training and testing sets
-train_test <- train_test_split(clean_df, 0.85)
+train_test <- train_test_split(model_ready_df, 0.85)
 
 # assign new dataframes
 train_df <- train_test$train
@@ -311,91 +504,243 @@ paste0('Number of rows in training set: ', nrow(train_df))
 paste0('Number of rows in testing set: ', nrow(test_df))
 ```
 
-#### Fit and Predict Intercept Model
+#### Define Model Interpretation Metrics
 
 ```{r}
-# define a simple metric to measure model complexity
+# define a simple metric to measure model complexity using the number of coefficients
 get_complexity = function(model) {
   length(coef(model)) - 1
 }
 
 # define response name for plots
-response_variable <- 'Life Expectancy'
+res_variable <- 'life_expectancy'
+res_variable_txt <- 'Life Expectancy'
+```
 
-# fit the intercept-only model to the training dataset
-intercept_fit <- lm(life_expectancy ~ 1, data=train_df)
-all_vars_fit <- lm(life_expectancy ~ ., data=train_df)
+#### Fit and Predict Intercept Model
 
-intercept_train_predictions <- predict(intercept_fit)
-intercept_test_predictions <- predict(intercept_fit, newdata = test_df)
-
-train_rmse <- rmse(train_df$life_expectancy, intercept_train_predictions)
-test_rmse <- rmse(test_df$life_expectancy, intercept_test_predictions)
-
-
-adj_r2 <- summary(intercept_fit)$adj.r.squared
-r2 <- summary(intercept_fit)$r.squared
-
-# validate model using testing set
-intercept_predictions <- predict(intercept_fit, newdata = test_df)
-all_vars_predictions <- predict(all_vars_fit, newdata = test_df)
-
-# all_vars_predictions
-
-# define list of models
-models <- list()
-
-# join prediction results with ID
-intercept_results <- data.frame(
-  id = test_df$id,
-  life_expectancy = test_df$life_expectancy,
-  intercept_prediction = intercept_predictions
-) %>%
-  mutate(residual = life_expectancy - intercept_prediction)
-
-rmse(test_df$life_expectancy, intercept_predictions)
-rmse(test_df$life_expectancy, all_vars_predictions)
-
-# create a scatter plot of residuals
-intercept_results %>% ggplot(aes(x=id, y=residual)) + 
-  geom_point(color='#c0392b', shape=1, alpha=0.8) +
-  geom_hline(yintercept=0) + 
-  labs(
-    title=paste0('Residuals Plot for ', response_variable),
-    subtitle='Intercept-Only Model',
-    x='Fitted Values',
-    y='Residual'
+```{r}
+# define simple models to run
+simple_models <- c(
+  # 'Intercept-Only', 
+  'All Variables'
+  # 'Intuition', 
+  # 'Forward Selection',
+  # 'Backward Selection',
+  # 'Step-Wise Selection'
   )
 
-# create a histogram of residuals
-intercept_results %>% ggplot(aes(x=residual)) + 
-  geom_histogram(aes(y=..density..), fill='#c0392b', color='white', bins=17) +
-  labs(
-    title=paste0('Histogram of Residuals for ', response_variable),
-    subtitle='Intercept-Only Model',
-    x='Residuals',
-    y=NULL
-  ) 
+# create a dataframe to store model results
+model_results <- setNames(
+  data.frame(
+    matrix(ncol=6, nrow=0)), 
+    c('Model', 'TrainRMSE', 'TestRMSE', 'AdjR2', 'R2', 'Predictors'))
 
-# scatter plot of predictions and residuals
-intercept_results %>% ggplot(aes(x=intercept_prediction, y=life_expectancy)) +
-  geom_point(color='#0C6291', shape=1, alpha=0.8) + 
-  geom_abline(intercept=0, slope=1) +
-  labs(
-    title=paste0('Observed vs Predicted Values for ', response_variable),
-    subtitle='Intercept-Only Model',
-    x='Predicted',
-    y='Observed (Test Set)'
-  )
+# loop over simple models 
+for (model in simple_models) {
 
-# step-wise forward variable selection
-forward <- step(
-  intercept_fit, 
-  direction='forward', 
-  scope=formula(all_vars_fit), 
-  trace=0)
+  # set initial value for model fit
+  fit <- NULL
+  
+  # plot additional plots for step-wise
+  is_stepwise <- F
+  
+  # fit intercept-only model as starting point for feature selection 
+  intercept_only <- lm(life_expectancy ~ 1, data=train_df)
+  
+  # set all variables model as starting point for feature selection
+  all <- lm(life_expectancy ~ . - id - country, data=train_df)
+  
+  # fit the intercept-only model to the training dataset
+  if (model == 'Intercept-Only') {
+    fit = intercept_only
+  }
+  
+  # fit all variables to the model
+  if (model == 'All Variables') {
+    fit = all
+  }
+  
+  # fit an intuition model 
+  if (model == 'Intuition') {
+    fit = lm(life_expectancy ~ 
+         adult_mortality +
+         income_composition_of_resources +
+         schooling + 
+         hiv_aids + 
+        percentage_expenditure,
+       data=train_df)
+  } 
+  
+  # fit a forward selection model
+  if (model == 'Forward Selection') {
+    is_stepwise = T
+    ols_step_forward_p(all, penter=0.05, details=F)
+    fit = lm(life_expectancy ~ 
+        adult_mortality +
+        income_composition_of_resources +
+        schooling + 
+        hiv_aids + 
+        diphtheria + 
+        bmi + 
+        status + 
+        polio + 
+        percentage_expenditure + 
+        measles, 
+      data=train_df)
+  }
+  
+  # fit a backward step-wise regression
+  if (model == 'Backward Selection') {
+    is_stepwise = T
+    ols_step_backward_p(all, prem=0.05, details=F)
+    fit = lm(life_expectancy ~ . -id - country - thinness_5_9_years 
+             - alcohol - year - hepatitis_b - under_five_deaths,
+      data=train_df)
+  }
+  
+  # fit a step-wise regression
+  if (model == 'Step-Wise Selection') {
+    is_stepwise = T
+    ols_step_both_p(all, penter = 0.05, prem = 0.05, details=F)
+    fit = lm(life_expectancy ~ 
+      adult_mortality +
+      income_composition_of_resources +
+      schooling + 
+      hiv_aids + 
+      diphtheria + 
+      bmi + 
+      status + 
+      polio + 
+      percentage_expenditure + 
+      measles,
+    data=train_df)
+  }
+  
+  if (!is.null(fit)) {
+    # calculate predictions from the training and testing set
+    train_preds <- predict(fit)
+    test_preds <- predict(fit, newdata = test_df)
+    
+    # calculate RMSE for training and testing sets
+    train_rmse <- rmse(train_df$life_expectancy, train_preds)
+    test_rmse <- rmse(test_df$life_expectancy, test_preds)
+    
+    # calculate R2 and adjusted R2 metrics
+    adj_r2 <- summary(fit)$adj.r.squared
+    r2 <- summary(fit)$r.squared
+    
+    if (is_stepwise) {
+      predictor_vars <- paste(k$predictors, collapse=', ')
+    } else
+      predictor_vars <- ''
+    
+    # add model results to dataframe
+    new_row <- c(
+      model, 
+      round(train_rmse, 4), 
+      round(test_rmse, 4), 
+      round(adj_r2, 4), 
+      round(r2, 4),
+      predictor_vars)
+		model_results[nrow(model_results) + 1, ] <- new_row
+    
 
-forward$anova
+    # set a plot with size 2x2 and plot the diagnostics
+    # par(mfrow=c(2,2))
+    plot(fit)
+    
+    
+    # join prediction results with ID
+    results_df <- data.frame(
+        id = test_df$id,
+        life_expectancy = test_df$life_expectancy,
+        prediction = test_preds
+      ) %>%
+      mutate(residual = life_expectancy - prediction)
+    
+    # create a scatter plot of residuals
+    p1 <- results_df %>% ggplot(aes(x=id, y=residual)) +
+      geom_point(color='#c0392b', shape=1, alpha=0.8) +
+      geom_hline(yintercept=0) +
+      labs(
+        title='Residuals Plot',
+        x='Fitted Values',
+        y='Residual'
+      ) + 
+      theme(
+        plot.title = element_text(size=10, face='bold'),
+        axis.title = element_text(size=9)
+      )
 
-forward$coefficients
+    # create a histogram of residuals
+    p2 <- results_df %>% ggplot(aes(x=residual)) +
+      geom_histogram(aes(y=..density..), fill='#c0392b', color='white', bins=17) +
+      labs(
+        title='Histogram of Residuals',
+        x='Residuals',
+        y=NULL
+      ) + 
+      theme(
+        plot.title = element_text(size=10, face='bold'),
+        axis.title = element_text(size=9)
+      )
+
+    # scatter plot of predictions and residuals
+    p3 <- results_df %>% ggplot(aes(x=prediction, y=life_expectancy)) +
+      geom_point(color='#0C6291', shape=1, alpha=0.8) +
+      geom_abline(intercept=0, slope=1) +
+      labs(
+        title='Observed vs Predicted',
+        x='Predicted',
+        y='Observed (Test Set)'
+      ) + 
+      theme(
+        plot.title = element_text(size=10, face='bold'),
+        axis.title = element_text(size=9)
+      )
+    
+    g <- grid.arrange(
+      p1, p2, p3,
+      nrow = 1,
+      top = paste0('Diagnostics Plots for ', model, ' Model')
+    )
+    
+    g
+        
+  }
+  
+
+}
+
+# convert model result data types
+model_results$TrainRMSE <- as.numeric(model_results$TestRMSE)
+model_results$TestRMSE <- as.numeric(model_results$TestRMSE)
+model_results$AdjR2 <- as.numeric(model_results$AdjR2)
+model_results$R2 <- as.numeric(model_results$R2)
+```
+
+
+
+```{r}
+model_results
+```
+
+```{r}
+
+reduced_model <- lm(life_expectancy ~ 
+  adult_mortality +
+  income_composition_of_resources +
+  schooling + 
+  hiv_aids + 
+  diphtheria + 
+  bmi + 
+  status + 
+  polio + 
+  percentage_expenditure + 
+  measles,
+data=train_df)
+
+ols_step_forward_aic(reduced_model, details=F)
+
 ```
