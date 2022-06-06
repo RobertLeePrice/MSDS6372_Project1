@@ -1,5 +1,5 @@
 ---
-title: "Project 1 - EDA"
+title: "6372 Stats 2 Project 1"
 author: "Robert Price"
 date: "5/30/2022"
 output: html_document
@@ -40,6 +40,12 @@ library(imputeTS)
 library(e1071)
 library(gridExtra)
 library(olsrr)
+
+# regression trees
+library(rpart)
+library(rpart.plot)
+library(ipred)
+library(caret)
 ```
 
 ## 02 - Summary of Data Set
@@ -743,4 +749,44 @@ data=train_df)
 
 ols_step_forward_aic(reduced_model, details=F)
 
+```
+#### Non Parametric Models
+
+Regression trees partition a data set into smaller groups and fit a simple
+model for each subgroup. 
+
+**Advantages**
+- Very interpretable
+- Making predictions is fast and computationally inexpensive
+- Easy to understand important variables
+- Is able to handle missing data
+- Handles non-linear responses
+- Fast and reliable
+
+**Disadvantages**
+- High variance can cause unstable predictions
+
+```{r}
+# fit regression tree model
+m1 <- rpart(
+  formula = life_expectancy ~ adult_mortality +
+    income_composition_of_resources +
+    schooling + 
+    hiv_aids + 
+    diphtheria + 
+    bmi + 
+    status + 
+    polio + 
+    percentage_expenditure + 
+    measles,
+  data    = train_df,
+  method  = 'anova'
+)
+
+# visualize tree partitioning
+rpart.plot(m1)
+
+# rpart performs 10-fold CV so that the error associated with a given 
+# alpha value is computed on the hold-out validation data
+plotcp(m1)
 ```
